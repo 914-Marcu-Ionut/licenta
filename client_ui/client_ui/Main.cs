@@ -22,6 +22,9 @@ namespace client_ui
         private static readonly Size CompactWindowSize = new Size(460, 230);
         private static readonly Size ExpandedWindowSize = new Size(760, 754);
 
+        [DllImport("user32.dll")]
+        private static extern bool LockWorkStation();
+
         [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
         private static extern uint ExtractIconEx(
             string lpszFile,
@@ -187,6 +190,7 @@ namespace client_ui
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information
                 );
+                LockWorkStation();
                 return;
             }
 
@@ -222,7 +226,8 @@ namespace client_ui
             bool queued = Program.EnqueuePipeMessage(new ContinueToExamMessage
             {
                 registered_name = Program.RegisteredStudentName,
-                run_id = Program.RegisteredRunId
+                run_id = Program.RegisteredRunId,
+                backend_host = BackendClient.BackendHost
             });
             if (queued)
             {

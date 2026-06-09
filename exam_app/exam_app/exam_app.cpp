@@ -53,6 +53,9 @@ using json = nlohmann::json;
 
 using namespace std;
 
+static std::string BACKEND_HOST = "192.168.0.199";
+static int BACKEND_PORT = 8443;
+
 void ws_send_event(const std::string& type, const json& detail = json::object());
 json get_active_window_info();
 
@@ -73,18 +76,20 @@ struct ExpectedFilter
     bool            isIPv6Block; // true = IPv6 block-all, different layer
 };
 
-static const UINT32 EXPECTED_ALLOW_IP = ntohl(inet_addr("64.226.106.168"));
 static const UINT32 EXPECTED_LOCALHOST = ntohl(inet_addr("127.0.0.1"));
 
-static const ExpectedFilter EXPECTED_FILTERS[] =
+static std::vector<ExpectedFilter> get_expected_filters()
 {
-    { FWP_ACTION_PERMIT, true,  EXPECTED_ALLOW_IP,  false, 0,           false }, // ALLOW IP
-    { FWP_ACTION_PERMIT, true,  EXPECTED_LOCALHOST, false, 0,           false }, // ALLOW LOCALHOST
-    { FWP_ACTION_PERMIT, true,  DNS_SERVER_1,       true,  DNS_SERVER_1, false }, // ALLOW DNS → 8.8.8.8
-    { FWP_ACTION_PERMIT, true,  DNS_SERVER_2,       true,  DNS_SERVER_2, false }, // ALLOW DNS → 1.1.1.1
-    { FWP_ACTION_BLOCK,  false, 0,                  false, 0,           false }, // BLOCK ALL IPv4
-    { FWP_ACTION_BLOCK,  false, 0,                  false, 0,           true  }, // BLOCK ALL IPv6
-};
+    UINT32 backendIP = ntohl(inet_addr(BACKEND_HOST.c_str()));
+    return {
+        { FWP_ACTION_PERMIT, true,  backendIP,          false, 0,           false }, // ALLOW IP
+        { FWP_ACTION_PERMIT, true,  EXPECTED_LOCALHOST, false, 0,           false }, // ALLOW LOCALHOST
+        { FWP_ACTION_PERMIT, true,  DNS_SERVER_1,       true,  DNS_SERVER_1, false }, // ALLOW DNS 8.8.8.8
+        { FWP_ACTION_PERMIT, true,  DNS_SERVER_2,       true,  DNS_SERVER_2, false }, // ALLOW DNS 1.1.1.1
+        { FWP_ACTION_BLOCK,  false, 0,                  false, 0,           false }, // BLOCK ALL IPv4
+        { FWP_ACTION_BLOCK,  false, 0,                  false, 0,           true  }, // BLOCK ALL IPv6
+    };
+}
 
 
 vector<thread> threads;
@@ -231,7 +236,8 @@ int check_rules_intact()
     }
 
     // Step 5: must have exactly the expected number of filters
-    int expectedCount = sizeof(EXPECTED_FILTERS) / sizeof(ExpectedFilter);
+    auto expectedFilters = get_expected_filters();
+    int expectedCount = (int)expectedFilters.size();
     if ((int)ourFilters.size() != expectedCount)
     {
         std::cout << "[WD] Expected " << expectedCount
@@ -243,7 +249,7 @@ int check_rules_intact()
     // Step 6: match each expected filter against what we found —
     // order is not guaranteed by WFP so we match by content
     std::vector<bool> matched(ourFilters.size(), false);
-    for (const auto& expected : EXPECTED_FILTERS)
+    for (const auto& expected : expectedFilters)
     {
         bool found = false;
         for (size_t i = 0; i < ourFilters.size(); i++)
@@ -684,6 +690,8 @@ bool load_exam_config(const std::string& path)
     }
     if (cfg.contains("registered_name")) g_registered_name = cfg["registered_name"].get<std::string>();
     if (cfg.contains("run_id"))          g_run_id = cfg["run_id"].get<std::string>();
+    if (cfg.contains("backend_host"))    BACKEND_HOST = cfg["backend_host"].get<std::string>();
+    if (cfg.contains("backend_port"))    BACKEND_PORT = cfg["backend_port"].get<int>();
     return !g_registered_name.empty() && !g_run_id.empty();
 }
 
@@ -935,7 +943,7 @@ void download_exam_files(const json& file_urls)
 
         std::wstring local_path = subject_dir + L"\\" + wfilename;
 
-        if (download_file_https("localhost", 8443, url_path, local_path)) {
+        if (download_file_https(BACKEND_HOST, BACKEND_PORT, url_path, local_path)) {
             std::cout << "[FILES] Downloaded: " << filename << "\n";
         }
         else {
@@ -1083,7 +1091,7 @@ void upload_student_work()
     }
 
     std::cout << "[UPLOAD] Uploading work.zip to backend...\n";
-    if (upload_work_https("localhost", 8443, g_student_id, g_run_id, zip_path)) {
+    if (upload_work_https(BACKEND_HOST, BACKEND_PORT, g_student_id, g_run_id, zip_path)) {
         std::cout << "[UPLOAD] Work uploaded successfully!\n";
         DeleteFileW(zip_path.c_str());
         MessageBoxW(NULL,
@@ -1171,7 +1179,7 @@ void websocket_thread()
     }
     std::cout << "[WS] Config loaded: name=" << g_registered_name << " run=" << g_run_id << "\n";
 
-    std::string uri = "wss://localhost:8443/ws";
+    std::string uri = "wss://" + BACKEND_HOST + ":" + std::to_string(BACKEND_PORT) + "/ws";
 
     while (true) {
         try {

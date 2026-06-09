@@ -207,6 +207,18 @@ namespace client_ui
 
             examInfoLabel.Text = "Exam: " + run.exam_name + "   (Run: " + run.id + ", " + run.status + ")";
             examInfoLabel.Visible = true;
+
+            if (run.status == "finished")
+            {
+                testExamButton.Visible = false;
+                realExamButton.Visible = false;
+                waitingLabel.Text = "This exam has already finished.";
+                waitingLabel.ForeColor = Color.FromArgb(161, 38, 38);
+                waitingLabel.Visible = true;
+                this.ClientSize = new Size(440, 160);
+                return;
+            }
+
             testExamButton.Visible = true;
             realExamButton.Visible = true;
             this.ClientSize = new Size(440, 160);
@@ -345,6 +357,12 @@ namespace client_ui
                             pollTimer.Stop();
                             this.DialogResult = DialogResult.OK;
                             this.Close();
+                        }
+                        else if (run.status == "finished")
+                        {
+                            pollTimer.Stop();
+                            waitingLabel.Text = "This exam has already finished.";
+                            waitingLabel.ForeColor = Color.FromArgb(161, 38, 38);
                         }
                         else
                         {

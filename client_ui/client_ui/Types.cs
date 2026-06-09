@@ -93,6 +93,7 @@ namespace client_ui
     {
         public string registered_name;
         public string run_id;
+        public string backend_host;
 
         public ContinueToExamMessage()
         {

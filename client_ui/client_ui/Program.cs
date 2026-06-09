@@ -19,6 +19,7 @@ namespace client_ui
         private static readonly Queue<string> outgoingMessages = new Queue<string>();
         private static readonly object outgoingLock = new object();
         private static readonly ManualResetEvent pipeReadySignal = new ManualResetEvent(false);
+        private static Process clientProcess;
 
         /// <summary>
         /// The main entry point for the application.
@@ -29,22 +30,77 @@ namespace client_ui
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
-            JoinForm joinForm = new JoinForm();
-            DialogResult joinResult = joinForm.ShowDialog();
-
-            if (joinResult != DialogResult.OK)
+            if (!StartClientProcess())
                 return;
 
-            RegisteredStudentName = joinForm.StudentName ?? "";
-            RegisteredRunId = joinForm.RunId ?? "";
-            main_ui = new Main();
-            threads = new List<Thread>();
+            while (true)
+            {
+                JoinForm joinForm = new JoinForm();
+                DialogResult joinResult = joinForm.ShowDialog();
 
-            Thread pipeThread = new Thread(PipeThread);
-            pipeThread.Start();
-            threads.Add(pipeThread);
+                if (joinResult != DialogResult.OK)
+                    return;
 
-            Application.Run(main_ui);
+                RegisteredStudentName = joinForm.StudentName ?? "";
+                RegisteredRunId = joinForm.RunId ?? "";
+                main_ui = new Main();
+                threads = new List<Thread>();
+
+                Thread pipeThread = new Thread(PipeThread);
+                pipeThread.Start();
+                threads.Add(pipeThread);
+
+                Application.Run(main_ui);
+
+                if (main_ui.DialogResult != DialogResult.Retry)
+                    return;
+            }
+        }
+
+        private static bool StartClientProcess()
+        {
+            try
+            {
+                string exeDir = AppDomain.CurrentDomain.BaseDirectory;
+                string clientPath = System.IO.Path.Combine(exeDir, "client.exe");
+                if (!System.IO.File.Exists(clientPath))
+                {
+                    MessageBox.Show("client.exe not found next to client_ui.exe.\nPath: " + clientPath,
+                        "Exam Client", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return false;
+                }
+
+                ProcessStartInfo psi = new ProcessStartInfo
+                {
+                    FileName = clientPath,
+                    WorkingDirectory = exeDir,
+                    UseShellExecute = true,
+                    Verb = "runas",
+                    WindowStyle = ProcessWindowStyle.Hidden
+                };
+                clientProcess = Process.Start(psi);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Failed to start client.exe:\n" + ex.Message,
+                    "Exam Client", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
+            }
+        }
+
+        private static void StopClientProcess()
+        {
+            try
+            {
+                if (clientProcess != null && !clientProcess.HasExited)
+                {
+                    clientProcess.Kill();
+                    clientProcess.WaitForExit(3000);
+                }
+            }
+            catch { }
+            clientProcess = null;
         }
 
         private static void PipeClientRun()
@@ -282,6 +338,7 @@ namespace client_ui
         public static void OnUiClose()
         {
             Console.WriteLine("UI closed");
+            StopClientProcess();
             Process.GetCurrentProcess().Kill();
         }
     }

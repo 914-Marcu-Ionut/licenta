@@ -26,13 +26,34 @@ namespace client_ui
 
     public static class BackendClient
     {
-        public static string BaseUrl = "https://localhost:8443";
+        public static string BackendHost = "192.168.0.199";
+        public static int BackendPort = 8443;
+        public static string BaseUrl = "https://" + BackendHost + ":" + BackendPort;
 
         static BackendClient()
         {
-            // TLS 1.2 = 3072, not available as enum in .NET 3.5
+            LoadConfig();
             ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
             ServicePointManager.ServerCertificateValidationCallback = AcceptAllCerts;
+        }
+
+        private static void LoadConfig()
+        {
+            try
+            {
+                string configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "client_config.json");
+                if (File.Exists(configPath))
+                {
+                    string json = File.ReadAllText(configPath);
+                    var cfg = JObject.Parse(json);
+                    if (cfg["backend_host"] != null)
+                        BackendHost = cfg["backend_host"].ToString();
+                    if (cfg["backend_port"] != null)
+                        BackendPort = (int)cfg["backend_port"];
+                    BaseUrl = "https://" + BackendHost + ":" + BackendPort;
+                }
+            }
+            catch { }
         }
 
         private static bool AcceptAllCerts(object sender, X509Certificate cert,

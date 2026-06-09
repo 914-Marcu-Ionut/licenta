@@ -45,7 +45,7 @@ struct InstalledProgram {
 
 
 std::vector<InstalledProgram> get_local_programs();
-int start_exam(const std::string& registered_name, const std::string& run_id, std::string& error_message);
+int start_exam(const std::string& registered_name, const std::string& run_id, const std::string& backend_host, std::string& error_message);
 
 const GUID EXAM_SUBLAYER_GUID =
 { 0x12345678, 0x1234, 0x1234, { 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x11, 0x22 } };
@@ -289,13 +289,13 @@ bool grant_batch_logon(const wchar_t* username) {
 }
 
 bool deploy_exam_app() {
-    const wchar_t* sourceDir =
-        L"C:\\Users\\PC\\Desktop\\licenta\\exam_app\\x64\\Debug";
+    wchar_t exePath[MAX_PATH];
+    GetModuleFileNameW(NULL, exePath, MAX_PATH);
+    std::wstring sourceDir = std::wstring(exePath);
+    sourceDir = sourceDir.substr(0, sourceDir.find_last_of(L"\\/"));
 
-    const wchar_t* destDir =
-        L"C:\\ProgramData\\ExamApp";
+    const wchar_t* destDir = L"C:\\ProgramData\\ExamApp";
 
-    // Create directory if not exists
     if (!CreateDirectoryW(destDir, NULL)) {
         if (GetLastError() != ERROR_ALREADY_EXISTS) {
             std::wcout << L"Failed to create directory\n";
@@ -311,7 +311,7 @@ bool deploy_exam_app() {
     };
 
     for (const auto& f : files) {
-        std::wstring src = std::wstring(sourceDir) + L"\\" + f.name;
+        std::wstring src = sourceDir + L"\\" + f.name;
         std::wstring dst = std::wstring(destDir) + L"\\" + f.name;
         if (!CopyFileW(src.c_str(), dst.c_str(), FALSE)) {
             std::wcout << L"Failed to copy " << f.name << L": " << GetLastError() << std::endl;
@@ -647,20 +647,24 @@ void pipe_client(HANDLE& hPipe)
             if (packet.contains("run_id") && packet["run_id"].is_string()) {
                 runId = packet["run_id"].get<std::string>();
             }
+            std::string backendHost = "";
+            if (packet.contains("backend_host") && packet["backend_host"].is_string()) {
+                backendHost = packet["backend_host"].get<std::string>();
+            }
 
-            if (registeredName.empty() || runId.empty()) {
+            if (registeredName.empty() || runId.empty() || backendHost.empty()) {
                 json response = {
                     {"type", "init_exam_response"},
                     {"code", 20},
-                    {"error", "registered_name and run_id are required"}
+                    {"error", "registered_name, run_id and backend_host are required"}
                 };
                 WritePipeJson(hPipe, response);
-                std::cout << "Sent error: missing registered_name or run_id" << std::endl;
+                std::cout << "Sent error: missing required fields" << std::endl;
                 continue;
             }
 
             std::string errorMessage;
-            int code = start_exam(registeredName, runId, errorMessage);
+            int code = start_exam(registeredName, runId, backendHost, errorMessage);
 
             json response = {
                 {"type", "init_exam_response"},
@@ -690,6 +694,8 @@ void pipe_client(HANDLE& hPipe)
 
     std::cout << "Pipe disconnected" << std::endl;
 }
+
+static std::atomic<bool> g_pipe_was_connected{ false };
 
 void pipe_server_thread() {
     while (true) {
@@ -729,11 +735,17 @@ void pipe_server_thread() {
             TRUE : (GetLastError() == ERROR_PIPE_CONNECTED);
 
         if (connected) {
+            g_pipe_was_connected = true;
             pipe_client(hPipe);
         }
 
         DisconnectNamedPipe(hPipe);
         CloseHandle(hPipe);
+
+        if (g_pipe_was_connected) {
+            std::cout << "[PIPE] Client disconnected, exiting.\n";
+            ExitProcess(0);
+        }
     }
 }
 
@@ -878,7 +890,7 @@ bool check_rules_intact()
     return true;
 }
 
-bool setup_exam_user_wfp(const std::wstring& sidString)
+bool setup_exam_user_wfp(const std::wstring& sidString, const std::string& backend_host)
 {
     HANDLE engine = NULL;
     PSID sid = NULL;
@@ -1171,7 +1183,8 @@ bool setup_exam_user_wfp(const std::wstring& sidString)
             return ntohl(addr);
         };
 
-    UINT32 allowIP = ip_to_uint(L"64.226.106.168");
+    std::wstring wBackendHost(backend_host.begin(), backend_host.end());
+    UINT32 allowIP = ip_to_uint(wBackendHost.c_str());
     UINT32 localhost = ip_to_uint(L"127.0.0.1");
 
     std::cout << "[+] IPs converted\n";
@@ -1530,7 +1543,7 @@ void cleanup_exam_user_profiles(const wchar_t* username) {
     std::wcout << L"[CLEANUP] Profile cleanup complete\n";
 }
 
-int start_exam(const std::string& registered_name, const std::string& run_id, std::string& error_message) {
+int start_exam(const std::string& registered_name, const std::string& run_id, const std::string& backend_host, std::string& error_message) {
     error_message.clear();
 
     USER_INFO_1 ui;
@@ -1623,7 +1636,8 @@ int start_exam(const std::string& registered_name, const std::string& run_id, st
     {
         json exam_config = {
             {"registered_name", registered_name},
-            {"run_id", run_id}
+            {"run_id", run_id},
+            {"backend_host", backend_host}
         };
         std::string configPath = "C:\\ProgramData\\ExamApp\\exam_config.json";
         std::ofstream configFile(configPath);
@@ -1686,7 +1700,7 @@ int start_exam(const std::string& registered_name, const std::string& run_id, st
         return 15;
     }
 
-    bool exam_wfp = setup_exam_user_wfp(get_user_sid(wstring(username)));
+    bool exam_wfp = setup_exam_user_wfp(get_user_sid(wstring(username)), backend_host);
     cout << "exam_wfp = " << exam_wfp << endl;
     if (!exam_wfp) {
         error_message = "Failed to apply network restrictions for exam user.";
@@ -1703,8 +1717,6 @@ vector<thread> threads;
 int main() {
 
     threads.push_back(thread(pipe_server_thread));
-
-        
 
     //LockWorkStation();
 
