@@ -148,14 +148,10 @@ func (cs *CheatingState) Update(eventType string, detail json.RawMessage) {
 		}
 		json.Unmarshal(detail, &d)
 
-		fileList := strings.Join(d.Files, ", ")
-		proc := strings.ToLower(d.ActiveWindow.Process)
-		if proc != "" && !strings.Contains(proc, `\users\exam_user\`) {
-			msg := "file copied from outside exam environment: " + d.ActiveWindow.Process
-			if fileList != "" {
-				msg += " | files: " + fileList
+		for _, f := range d.Files {
+			if !strings.Contains(strings.ToLower(f), `c:\users\exam_user`) {
+				cs.AddFlag("file_copy_outside_env", "file copied from outside exam environment: "+f, "high")
 			}
-			cs.AddFlag("file_copy_outside_env", msg, "high")
 		}
 
 	case "firewall_tampered":
