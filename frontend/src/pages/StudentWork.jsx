@@ -155,7 +155,17 @@ export default function StudentWork({ teacher }) {
 
         {/* File tree */}
         <div className="w-64 border-r border-zinc-800 overflow-y-auto bg-zinc-900/50">
-          <div className="p-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Files</div>
+          <div className="p-3 flex items-center justify-between">
+            <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Files</span>
+            {selectedStudent?.uploaded && (
+              <a
+                href={`/api/student/work/download?run_id=${runId}&student_id=${selectedStudent.id}`}
+                className="text-xs px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+              >
+                Download
+              </a>
+            )}
+          </div>
           {!selectedStudent ? (
             <div className="p-4 text-sm text-zinc-500">Select a student</div>
           ) : !selectedStudent.uploaded ? (

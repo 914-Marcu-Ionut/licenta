@@ -63,6 +63,7 @@ func main() {
 	mux.HandleFunc("POST /student/upload-work", handleUploadWork(db))
 	mux.HandleFunc("GET /student/work", handleListStudentWork(db))
 	mux.HandleFunc("GET /student/work/files", handleListWorkFiles(db))
+	mux.HandleFunc("GET /student/work/download", handleDownloadWork(db))
 	mux.HandleFunc("GET /student/work/file", handleGetWorkFile(db))
 	mux.HandleFunc("GET /ws", handleWebSocket(db))
 

@@ -985,6 +985,38 @@ func handleListWorkFiles(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// GET /student/work/download?run_id=...&student_id=...
+func handleDownloadWork(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		runID := r.URL.Query().Get("run_id")
+		studentID := r.URL.Query().Get("student_id")
+		if runID == "" || studentID == "" {
+			writeError(w, http.StatusBadRequest, "run_id and student_id required")
+			return
+		}
+
+		dir := filepath.Join(studentWorkDir, runID, studentID)
+		entries, _ := os.ReadDir(dir)
+		if len(entries) == 0 {
+			writeError(w, http.StatusNotFound, "no work uploaded")
+			return
+		}
+
+		zipPath := filepath.Join(dir, entries[0].Name())
+
+		var studentName string
+		db.QueryRow("SELECT name FROM registered_students WHERE id = ? AND run_id = ?", studentID, runID).Scan(&studentName)
+		if studentName == "" {
+			studentName = studentID
+		}
+
+		filename := studentName + ".zip"
+		w.Header().Set("Content-Type", "application/zip")
+		w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
+		http.ServeFile(w, r, zipPath)
+	}
+}
+
 // GET /student/work/file?run_id=...&student_id=...&path=...
 func handleGetWorkFile(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
