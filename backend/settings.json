@@ -1,0 +1,7 @@
+{
+    "cert_file": "cert/cert.pem",
+    "key_file": "cert/key.pem",
+    "port": 8443,
+    "db_path": "backend.db",
+    "log_level": 1
+}

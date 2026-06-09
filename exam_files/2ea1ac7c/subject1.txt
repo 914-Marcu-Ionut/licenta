@@ -1,0 +1,10 @@
+Given 2 vectors from keyboard, calculate their dot product
+
+IN:
+
+n
+vector_a
+vector_b
+
+OUT:
+vector_result
