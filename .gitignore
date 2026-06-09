@@ -26,10 +26,10 @@ build/
 .env.*
 
 # Certificates / secrets
-*.pem
-*.key
-*.pfx
-*.crt
+#*.pem
+#*.key
+#*.pfx
+#*.crt
 
 # OS files
 .DS_Store
