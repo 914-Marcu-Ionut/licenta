@@ -1098,6 +1098,8 @@ void upload_student_work()
             L"Your exam is finished and your work has been uploaded successfully.\n\n"
             L"You can now log out from this account.",
             L"Exam Finished", MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
+        std::cout << "[EXIT] Exam finished, exiting.\n";
+        ExitProcess(0);
     }
     else {
         std::cout << "[UPLOAD] Failed to upload work\n";
@@ -1152,6 +1154,13 @@ void on_ws_message(websocketpp::connection_hdl, wss_client::message_ptr msg)
         }
         else if (status != 0) {
             std::cout << "[WS] Server error: " << message << "\n";
+            if (message.find("already finished") != std::string::npos) {
+                std::cout << "[EXIT] Exam already finished, exiting.\n";
+                MessageBoxW(NULL,
+                    L"This exam has already been completed.\n\nThe application will now close.",
+                    L"Exam Finished", MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
+                ExitProcess(0);
+            }
         }
     }
     catch (...) {
@@ -1550,6 +1559,23 @@ void timer_overlay_thread()
 
 int main()
 {
+    FreeConsole();
+
+    static std::ofstream logFile("C:\\ProgramData\\ExamApp\\debug.txt", std::ios::out | std::ios::app);
+    static std::wofstream wlogFile("C:\\ProgramData\\ExamApp\\debug.txtw", std::ios::out | std::ios::app);
+    if (logFile.is_open()) {
+        std::cout.rdbuf(logFile.rdbuf());
+        std::cerr.rdbuf(logFile.rdbuf());
+        std::cout << std::unitbuf;
+        std::cerr << std::unitbuf;
+    }
+    if (wlogFile.is_open()) {
+        std::wcout.rdbuf(wlogFile.rdbuf());
+        std::wcerr.rdbuf(wlogFile.rdbuf());
+        std::wcout << std::unitbuf;
+        std::wcerr << std::unitbuf;
+    }
+
     bool protected_process = protect_process();
     cout << "protected: " << protected_process << endl;
     std::cout << "Exam started\n";

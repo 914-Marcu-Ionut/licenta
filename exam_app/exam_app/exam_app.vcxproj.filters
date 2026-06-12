@@ -18,5 +18,13 @@
     <ClCompile Include="exam_app.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="work_analyzer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="work_analyzer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
