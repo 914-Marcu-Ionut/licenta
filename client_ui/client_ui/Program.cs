@@ -70,9 +70,11 @@ namespace client_ui
                     return false;
                 }
 
+                int myPid = Process.GetCurrentProcess().Id;
                 ProcessStartInfo psi = new ProcessStartInfo
                 {
                     FileName = clientPath,
+                    Arguments = "--parent-pid " + myPid,
                     WorkingDirectory = exeDir,
                     UseShellExecute = true,
                     Verb = "runas",

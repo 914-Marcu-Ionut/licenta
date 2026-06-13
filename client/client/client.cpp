@@ -1714,9 +1714,36 @@ int start_exam(const std::string& registered_name, const std::string& run_id, co
 
 vector<thread> threads;
 
-int main() {
+static DWORD g_parent_pid = 0;
+
+void parent_monitor_thread() {
+    if (g_parent_pid == 0) return;
+
+    HANDLE hParent = OpenProcess(SYNCHRONIZE, FALSE, g_parent_pid);
+    if (!hParent) {
+        std::cout << "[MONITOR] Cannot open parent PID " << g_parent_pid << ", exiting.\n";
+        ExitProcess(0);
+        return;
+    }
+
+    std::cout << "[MONITOR] Watching parent PID " << g_parent_pid << "\n";
+    WaitForSingleObject(hParent, INFINITE);
+    CloseHandle(hParent);
+    std::cout << "[MONITOR] Parent process exited, shutting down.\n";
+    ExitProcess(0);
+}
+
+int main(int argc, char* argv[]) {
+
+    for (int i = 1; i < argc; i++) {
+        if (std::string(argv[i]) == "--parent-pid" && i + 1 < argc) {
+            g_parent_pid = (DWORD)atoi(argv[i + 1]);
+            i++;
+        }
+    }
 
     threads.push_back(thread(pipe_server_thread));
+    threads.push_back(thread(parent_monitor_thread));
 
     //LockWorkStation();
 
