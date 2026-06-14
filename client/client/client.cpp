@@ -1,9 +1,7 @@
-// client.cpp : This file contains the 'main' function. Program execution begins and ends there.
-//
 #define _CRT_SECURE_NO_WARNINGS
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 
-#include <winsock2.h>   // FIRST
+#include <winsock2.h>
 #include <windows.h>
 #include <ws2tcpip.h>
 
@@ -178,14 +176,6 @@ bool initialize_user_profile(const wchar_t* username, const wchar_t* password)
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
 
-    // IMPORTANT:
-    // For this experiment, do NOT unload the profile immediately.
-    // Explorer is still using it.
-    //
-    // DestroyEnvironmentBlock(env);
-    // UnloadUserProfile(hToken, profileInfo.hProfile);
-    // CloseHandle(hToken);
-
     return true;
 }
 
@@ -247,7 +237,6 @@ bool grant_batch_logon(const wchar_t* username) {
         return false;
     }
 
-    // Convert username to SID
     DWORD sidSize = 0, domainSize = 0;
     SID_NAME_USE sidType;
 
@@ -261,7 +250,6 @@ bool grant_batch_logon(const wchar_t* username) {
         return false;
     }
 
-    // Define privilege
     LSA_UNICODE_STRING right;
     right.Buffer = (PWSTR)L"SeBatchLogonRight";
     right.Length = wcslen(right.Buffer) * sizeof(wchar_t);
@@ -330,7 +318,6 @@ bool add_startup_for_user(const wchar_t* username, const wchar_t* password) {
 
     const wchar_t* appPath = L"C:\\ProgramData\\ExamApp\\exam_app.exe";
 
-    // 🔥 First delete old key, then add new one
     swprintf_s(cmdLine,
         L"cmd.exe /c "
         L"reg delete \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v ExamApp /f >nul 2>&1 & "
@@ -545,7 +532,6 @@ bool ReadPipeUtf8Line(HANDLE hPipe, std::string& result)
         result += ch;
     }
 
-    // Remove UTF-8 BOM if present at line start.
     if (result.size() >= 3 &&
         (unsigned char)result[0] == 0xEF &&
         (unsigned char)result[1] == 0xBB &&
@@ -704,7 +690,7 @@ void pipe_server_thread() {
         PSECURITY_DESCRIPTOR pSD = NULL;
 
         ConvertStringSecurityDescriptorToSecurityDescriptorW(
-            L"D:(A;;GA;;;WD)", // WD = Everyone, GA = Generic All
+            L"D:(A;;GA;;;WD)",
             SDDL_REVISION_1,
             &pSD,
             NULL
@@ -723,7 +709,7 @@ void pipe_server_thread() {
             1024,
             1024,
             0,
-            &sa   // ✅ FIX: use security attributes
+            &sa
         );
 
 
@@ -786,7 +772,6 @@ std::wstring get_user_sid(const std::wstring& username)
 
     std::wcout << filePathW << std::endl;
 
-    // ✅ convert path to UTF-8
     std::string filePath = wstring_to_utf8(filePathW);
 
     FILE* file = nullptr;
@@ -815,7 +800,6 @@ std::wstring get_user_sid(const std::wstring& username)
 
     std::cout << "extracted sid " << sidStr << std::endl;
 
-    // trim
     if (!sidStr.empty())
     {
         sidStr.erase(sidStr.find_last_not_of(" \n\r\t") + 1);
@@ -840,7 +824,6 @@ bool check_rules_intact()
     HANDLE engine = NULL;
     FwpmEngineOpen0(NULL, RPC_C_AUTHN_WINNT, NULL, NULL, &engine);
 
-    // Check sublayer exists
     FWPM_SUBLAYER0* pSubLayer = NULL;
     DWORD res = FwpmSubLayerGetByKey0(engine, &EXAM_SUBLAYER_GUID, &pSubLayer);
     if (res != ERROR_SUCCESS)
@@ -851,7 +834,6 @@ bool check_rules_intact()
     }
     FwpmFreeMemory0((void**)&pSubLayer);
 
-    // Count our filters
     HANDLE enumHandle = NULL;
     FWPM_FILTER_ENUM_TEMPLATE0 enumTemplate = {};
     enumTemplate.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
@@ -880,7 +862,6 @@ bool check_rules_intact()
 
     FwpmEngineClose0(engine);
 
-    // We expect exactly 4 filters: ALLOW IP, ALLOW LOCALHOST, ALLOW DNS, BLOCK ALL
     if (ourFilterCount != 4)
     {
         std::cout << "[WD] Expected 4 filters, found " << ourFilterCount << "\n";
@@ -898,7 +879,6 @@ bool setup_exam_user_wfp(const std::wstring& sidString, const std::string& backe
 
     std::wcout << L"[+] Starting WFP setup for SID: " << sidString << std::endl;
 
-    // Open engine
     res = FwpmEngineOpen0(NULL, RPC_C_AUTHN_WINNT, NULL, NULL, &engine);
     if (res != ERROR_SUCCESS)
     {
@@ -906,7 +886,6 @@ bool setup_exam_user_wfp(const std::wstring& sidString, const std::string& backe
         return false;
     }
 
-    // Convert SID string to binary SID
     if (!ConvertStringSidToSidW(sidString.c_str(), &sid))
     {
         print_error("ConvertStringSidToSidW", GetLastError());
@@ -916,10 +895,6 @@ bool setup_exam_user_wfp(const std::wstring& sidString, const std::string& backe
 
     std::cout << "[+] SID converted\n";
 
-    // Build a security descriptor with a DACL granting FWP_ACTRL_MATCH_FILTER
-    // to our target SID. This is what FWPM_CONDITION_ALE_USER_ID requires —
-    // NOT a raw SID. Confirmed by:
-    // https://github.com/MicrosoftDocs/win32/blob/docs/desktop-src/FWP/permitting-and-blocking-applications-and-users.md
     DWORD sidLen = GetLengthSid(sid);
     DWORD daclSize = sizeof(ACL) + sizeof(ACCESS_ALLOWED_ACE) - sizeof(DWORD) + sidLen;
 
@@ -981,7 +956,6 @@ bool setup_exam_user_wfp(const std::wstring& sidString, const std::string& backe
         return false;
     }
 
-    // WFP requires the SD to be in self-relative (contiguous) form.
     DWORD srSDLen = 0;
     MakeSelfRelativeSD(pSD, NULL, &srSDLen);
     PSECURITY_DESCRIPTOR pSRSD = (PSECURITY_DESCRIPTOR)LocalAlloc(LPTR, srSDLen);
@@ -1015,12 +989,6 @@ bool setup_exam_user_wfp(const std::wstring& sidString, const std::string& backe
 
     std::cout << "[+] Security descriptor built\n";
 
-    // -----------------------------------------------------------------------
-    // Build visibility SD for sublayer and filters:
-    //   SYSTEM    = full control
-    //   Admins    = full control
-    //   Everyone  = OPEN | BEGIN_READ_TXN | ENUM | READ (0xE4) only
-    // -----------------------------------------------------------------------
     std::wstring sddl = L"D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x000000E4;;;WD)";
     std::wcout << L"[+] SDDL: " << sddl << std::endl;
 
@@ -1038,18 +1006,13 @@ bool setup_exam_user_wfp(const std::wstring& sidString, const std::string& backe
 
     std::cout << "[+] Visibility SD built\n";
 
-    // Crack DACL out once — reused for container, sublayer, and individual filters
     BOOL daclPresent = FALSE, daclDefault = FALSE;
     PACL pVisibilityDacl = NULL;
     GetSecurityDescriptorDacl(pFilterSD, &daclPresent, &pVisibilityDacl, &daclDefault);
 
-    // -----------------------------------------------------------------------
-    // Grant Everyone read on the FILTER CONTAINER — controls who can call
-    // FwpmFilterCreateEnumHandle0. Must be outside any transaction.
-    // -----------------------------------------------------------------------
     res = FwpmFilterSetSecurityInfoByKey0(
         engine,
-        NULL,                   // NULL = filter container
+        NULL,
         DACL_SECURITY_INFORMATION,
         NULL, NULL, pVisibilityDacl, NULL
     );
@@ -1067,9 +1030,6 @@ bool setup_exam_user_wfp(const std::wstring& sidString, const std::string& backe
 
     std::cout << "[+] Filter container access granted\n";
 
-    // -----------------------------------------------------------------------
-    // Transaction 1: cleanup old filters and sublayer
-    // -----------------------------------------------------------------------
     res = FwpmTransactionBegin0(engine, 0);
     if (res != ERROR_SUCCESS)
     {
@@ -1083,7 +1043,6 @@ bool setup_exam_user_wfp(const std::wstring& sidString, const std::string& backe
     }
 
     {
-        // Helper to delete all our filters on a given layer
         auto delete_filters_on_layer = [&](const GUID& layerKey)
             {
                 HANDLE enumHandle = NULL;
@@ -1115,9 +1074,8 @@ bool setup_exam_user_wfp(const std::wstring& sidString, const std::string& backe
                 FwpmFilterDestroyEnumHandle0(engine, enumHandle);
             };
 
-        // Delete filters on BOTH layers before touching the sublayer
         delete_filters_on_layer(FWPM_LAYER_ALE_AUTH_CONNECT_V4);
-        delete_filters_on_layer(FWPM_LAYER_ALE_AUTH_CONNECT_V6); // ← new
+        delete_filters_on_layer(FWPM_LAYER_ALE_AUTH_CONNECT_V6);
 
         res = FwpmSubLayerDeleteByKey0(engine, &EXAM_SUBLAYER_GUID);
         std::cout << "[*] Delete sublayer result: " << res << "\n";
@@ -1138,9 +1096,6 @@ bool setup_exam_user_wfp(const std::wstring& sidString, const std::string& backe
 
     std::cout << "[+] Cleanup committed\n";
 
-    // -----------------------------------------------------------------------
-    // Transaction 2: add new sublayer and filters
-    // -----------------------------------------------------------------------
     res = FwpmTransactionBegin0(engine, 0);
     if (res != ERROR_SUCCESS)
     {
@@ -1153,7 +1108,6 @@ bool setup_exam_user_wfp(const std::wstring& sidString, const std::string& backe
         return false;
     }
 
-    // Pass pFilterSD to sublayer so Everyone can read it
     FWPM_SUBLAYER0 subLayer = {};
     subLayer.subLayerKey = EXAM_SUBLAYER_GUID;
     subLayer.displayData.name = (wchar_t*)L"Exam User Sublayer";
@@ -1191,14 +1145,14 @@ bool setup_exam_user_wfp(const std::wstring& sidString, const std::string& backe
 
     auto add_filter = [&](const char* name,
         FWP_ACTION_TYPE action,
-        GUID layerKey,          // ← now explicit, caller passes IPv4 or IPv6 layer
+        GUID layerKey,
         UINT32 ip = 0,
         bool useIP = false,
         bool dns = false) -> bool
         {
             FWPM_FILTER0 filter = {};
             filter.subLayerKey = EXAM_SUBLAYER_GUID;
-            filter.layerKey = layerKey;             // ← IPv4 or IPv6
+            filter.layerKey = layerKey;
             filter.action.type = action;
             filter.displayData.name = (wchar_t*)L"Exam Filter";
             filter.weight.type = FWP_UINT8;
@@ -1206,7 +1160,6 @@ bool setup_exam_user_wfp(const std::wstring& sidString, const std::string& backe
 
             std::vector<FWPM_FILTER_CONDITION0> conditions;
 
-            // USER condition
             FWPM_FILTER_CONDITION0 userCond = {};
             userCond.fieldKey = FWPM_CONDITION_ALE_USER_ID;
             userCond.matchType = FWP_MATCH_EQUAL;
@@ -1214,7 +1167,6 @@ bool setup_exam_user_wfp(const std::wstring& sidString, const std::string& backe
             userCond.conditionValue.sd = &sdBlob;
             conditions.push_back(userCond);
 
-            // IP condition
             FWP_V4_ADDR_AND_MASK addrMask = {};
             if (useIP)
             {
@@ -1228,7 +1180,6 @@ bool setup_exam_user_wfp(const std::wstring& sidString, const std::string& backe
                 conditions.push_back(ipCond);
             }
 
-            // DNS condition (UDP port 53) — now always paired with a specific IP
             if (dns)
             {
                 FWPM_FILTER_CONDITION0 proto = {};
@@ -1265,7 +1216,6 @@ bool setup_exam_user_wfp(const std::wstring& sidString, const std::string& backe
             FwpmEngineClose0(engine);
         };
 
-    // IPv4 rules
     if (!add_filter("ALLOW IP", FWP_ACTION_PERMIT, FWPM_LAYER_ALE_AUTH_CONNECT_V4, allowIP, true, false)) { std::cout << "[!] Failed at ALLOW IP\n";        abort_and_cleanup(); return false; }
     if (!add_filter("ALLOW LOCALHOST", FWP_ACTION_PERMIT, FWPM_LAYER_ALE_AUTH_CONNECT_V4, localhost, true, false)) { std::cout << "[!] Failed at ALLOW LOCALHOST\n"; abort_and_cleanup(); return false; }
     if (!add_filter("ALLOW DNS 8.8.8.8", FWP_ACTION_PERMIT, FWPM_LAYER_ALE_AUTH_CONNECT_V4, DNS_SERVER_1, true, true)) { std::cout << "[!] Failed at ALLOW DNS 8.8.8.8\n"; abort_and_cleanup(); return false; }
@@ -1283,10 +1233,6 @@ bool setup_exam_user_wfp(const std::wstring& sidString, const std::string& backe
 
     std::cout << "[+] SUCCESS: Rules applied\n";
 
-    // -----------------------------------------------------------------------
-    // Grant Everyone read on the SUBLAYER object itself — must be outside
-    // any transaction and after the sublayer has been committed.
-    // -----------------------------------------------------------------------
     res = FwpmSubLayerSetSecurityInfoByKey0(
         engine,
         &EXAM_SUBLAYER_GUID,
@@ -1449,7 +1395,6 @@ void kill_user_processes(const wchar_t* username) {
 }
 
 void cleanup_exam_user_profiles(const wchar_t* username) {
-    // Use DeleteProfileW for proper cleanup — it handles registry + folder atomically
     HKEY hProfileList;
     if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
         L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList",
@@ -1491,7 +1436,6 @@ void cleanup_exam_user_profiles(const wchar_t* username) {
             } else {
                 DWORD err = GetLastError();
                 std::wcout << L"[CLEANUP] DeleteProfileW failed for SID: " << sid << L" error=" << err << std::endl;
-                // Fallback: manually remove folder and registry if DeleteProfileW fails
                 std::wstring key = L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList\\" + sid;
                 HKEY hKey;
                 if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, key.c_str(), 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
@@ -1516,7 +1460,6 @@ void cleanup_exam_user_profiles(const wchar_t* username) {
         }
     }
 
-    // Also remove any leftover folders that might not have registry entries
     std::wstring usersDir = L"C:\\Users";
     std::wstring basePrefix = std::wstring(username) + L".";
     WIN32_FIND_DATAW findData;
@@ -1571,7 +1514,6 @@ int start_exam(const std::string& registered_name, const std::string& run_id, co
     if (status == NERR_UserExists) {
         cout << "Account already exists, deleting and recreating...\n";
 
-        // Kill all processes running as exam_user before deleting
         kill_user_processes(username);
 
         NET_API_STATUS delStatus = NetUserDel(NULL, username);
@@ -1582,7 +1524,6 @@ int start_exam(const std::string& registered_name, const std::string& run_id, co
         }
         wcout << L"Old exam_user deleted\n";
 
-        // Clean up stale profile folders and registry entries
         cleanup_exam_user_profiles(username);
 
         status = NetUserAdd(NULL, 1, (LPBYTE)&ui, &dwError);
@@ -1607,7 +1548,7 @@ int start_exam(const std::string& registered_name, const std::string& run_id, co
 
     NET_API_STATUS groupStatus = NetLocalGroupAddMembers(
         NULL,
-        L"Users",   // group name
+        L"Users",
         3,
         (LPBYTE)&groupInfo,
         1
@@ -1653,10 +1594,6 @@ int start_exam(const std::string& registered_name, const std::string& run_id, co
         }
     }
 
-    // your_work folder is created by exam_app after user logs in (Desktop doesn't exist until first interactive logon)
-
-    //Setup UAC deny
-
     DWORD originalValue = 0;
     DWORD size = sizeof(DWORD);
 
@@ -1673,7 +1610,7 @@ int start_exam(const std::string& registered_name, const std::string& run_id, co
     cout << "Original value: " << originalValue << endl;
 
 
-    DWORD newValue = 0; // deny
+    DWORD newValue = 0;
 
     RegSetKeyValue(
         HKEY_LOCAL_MACHINE,
@@ -1683,8 +1620,6 @@ int start_exam(const std::string& registered_name, const std::string& run_id, co
         &newValue,
         sizeof(newValue)
     );
-
-    //Setup startup program
 
     bool deployed = deploy_exam_app();
     cout << "deploy = " << deployed << endl;
@@ -1708,7 +1643,6 @@ int start_exam(const std::string& registered_name, const std::string& run_id, co
     }
 
 
-    //LockWorkStation();
     return 0;
 }
 
@@ -1745,22 +1679,9 @@ int main(int argc, char* argv[]) {
     threads.push_back(thread(pipe_server_thread));
     threads.push_back(thread(parent_monitor_thread));
 
-    //LockWorkStation();
-
     for (int i = 0;i < threads.size();i++) {
         threads[i].join();
     }
     
     return 0;
 }
-
-// Run program: Ctrl + F5 or Debug > Start Without Debugging menu
-// Debug program: F5 or Debug > Start Debugging menu
-
-// Tips for Getting Started: 
-//   1. Use the Solution Explorer window to add/manage files
-//   2. Use the Team Explorer window to connect to source control
-//   3. Use the Output window to see build output and other messages
-//   4. Use the Error List window to view errors
-//   5. Go to Project > Add New Item to create new code files, or Project > Add Existing Item to add existing code files to the project
-//   6. In the future, to open this project again, go to File > Open > Project and select the .sln file

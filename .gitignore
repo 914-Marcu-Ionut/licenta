@@ -54,3 +54,7 @@ coverage/
 # Exam files
 exam_files/
 student_work/
+
+
+backend/backend.db
+backend/backend.db-shm

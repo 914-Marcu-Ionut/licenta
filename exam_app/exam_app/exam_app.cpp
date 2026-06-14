@@ -1,9 +1,7 @@
-// exam_app.cpp : This file contains the 'main' function. Program execution begins and ends there.
-//
 #define _CRT_SECURE_NO_WARNINGS
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 
-#include <winsock2.h>   // FIRST
+#include <winsock2.h>
 #include <windows.h>
 #include <ws2tcpip.h>
 #include <wtsapi32.h>
@@ -72,8 +70,8 @@ struct ExpectedFilter
     bool            hasIP;
     UINT32          ip;
     bool            hasDNS;
-    UINT32          dnsIP;  // 0 = any, non-zero = specific DNS server IP
-    bool            isIPv6Block; // true = IPv6 block-all, different layer
+    UINT32          dnsIP;
+    bool            isIPv6Block;
 };
 
 static const UINT32 EXPECTED_LOCALHOST = ntohl(inet_addr("127.0.0.1"));
@@ -94,26 +92,21 @@ static std::vector<ExpectedFilter> get_expected_filters()
 
 vector<thread> threads;
 
-// Validate a single filter's conditions match what we expect
 bool validate_filter(FWPM_FILTER0* f, const ExpectedFilter& expected)
 {
     if (f->action.type != expected.action)
         return false;
 
-    // IPv6 block is on a different layer
     if (expected.isIPv6Block)
     {
         return f->layerKey == FWPM_LAYER_ALE_AUTH_CONNECT_V6
-            && f->numFilterConditions == 1; // only user SID condition
+            && f->numFilterConditions == 1;
     }
 
     if (f->layerKey != FWPM_LAYER_ALE_AUTH_CONNECT_V4)
         return false;
 
-    bool hasUserCond = false;
-    bool hasIPCond = false;
-    bool hasProtoCond = false;
-    bool hasPortCond = false;
+    bool hasUserCond = false, hasIPCond = false, hasProtoCond = false, hasPortCond = false;
 
     for (UINT32 i = 0; i < f->numFilterConditions; i++)
     {
@@ -163,7 +156,6 @@ int check_rules_intact()
 {
     HANDLE engine = NULL;
 
-    // Step 1: open engine
     DWORD res = FwpmEngineOpen0(NULL, RPC_C_AUTHN_WINNT, NULL, NULL, &engine);
     if (res != ERROR_SUCCESS)
     {
@@ -171,20 +163,18 @@ int check_rules_intact()
         return -1;
     }
 
-    // Step 2: check sublayer exists
     FWPM_SUBLAYER0* pSubLayer = NULL;
     res = FwpmSubLayerGetByKey0(engine, &EXAM_SUBLAYER_GUID, &pSubLayer);
     if (res != ERROR_SUCCESS)
     {
         std::cout << "[WD] Sublayer missing or inaccessible: " << res << "\n";
         FwpmEngineClose0(engine);
-        return -2; // rules are gone
+        return -2;
     }
     FwpmFreeMemory0((void**)&pSubLayer);
 
-    // Step 3 & 4: enumerate filters on BOTH IPv4 and IPv6 layers
     std::vector<FWPM_FILTER0*> ourFilters;
-    std::vector<FWPM_FILTER0**> allocations; // track for cleanup
+    std::vector<FWPM_FILTER0**> allocations;
 
     auto enumerate_layer = [&](const GUID& layerKey) -> bool
         {
@@ -232,10 +222,9 @@ int check_rules_intact()
         !enumerate_layer(FWPM_LAYER_ALE_AUTH_CONNECT_V6))
     {
         free_all();
-        return -1; // engine/API failure, not necessarily tampering
+        return -1;
     }
 
-    // Step 5: must have exactly the expected number of filters
     auto expectedFilters = get_expected_filters();
     int expectedCount = (int)expectedFilters.size();
     if ((int)ourFilters.size() != expectedCount)
@@ -243,11 +232,9 @@ int check_rules_intact()
         std::cout << "[WD] Expected " << expectedCount
             << " filters, found " << ourFilters.size() << "\n";
         free_all();
-        return -2; // wrong number of filters — tampered
+        return -2;
     }
 
-    // Step 6: match each expected filter against what we found —
-    // order is not guaranteed by WFP so we match by content
     std::vector<bool> matched(ourFilters.size(), false);
     for (const auto& expected : expectedFilters)
     {
@@ -270,7 +257,7 @@ int check_rules_intact()
                 << " hasDNS=" << expected.hasDNS
                 << " isIPv6=" << expected.isIPv6Block << "\n";
             free_all();
-            return -2; // filter present but contents are wrong — tampered
+            return -2;
         }
     }
 
@@ -356,7 +343,6 @@ json get_active_window_info()
 
 HWND g_hiddenWindow = NULL;
 
-// Your actual clipboard handling logic goes here
 void on_clipboard_changed()
 {
     if (!OpenClipboard(NULL)) return;
@@ -423,7 +409,6 @@ LRESULT CALLBACK hidden_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
     switch (msg)
     {
     case WM_CLIPBOARDUPDATE:
-        // Fired every time clipboard changes in THIS window station
         on_clipboard_changed();
         return 0;
 
@@ -437,18 +422,16 @@ LRESULT CALLBACK hidden_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 
 void monitor_clipboard_thread() {
-    // Register a hidden window class
     WNDCLASSW wc = {};
     wc.lpfnWndProc = hidden_wnd_proc;
     wc.hInstance = GetModuleHandleW(NULL);
     wc.lpszClassName = L"ExamClipboardMonitor";
     RegisterClassW(&wc);
 
-    // Create hidden window — no WS_VISIBLE, no parent
     g_hiddenWindow = CreateWindowExW(
         0, L"ExamClipboardMonitor", L"",
         0, 0, 0, 0, 0,
-        HWND_MESSAGE,   // message-only window, never shown
+        HWND_MESSAGE,
         NULL, GetModuleHandleW(NULL), NULL
     );
 
@@ -458,7 +441,6 @@ void monitor_clipboard_thread() {
         return;
     }
 
-    // Register for clipboard notifications
     if (!AddClipboardFormatListener(g_hiddenWindow))
     {
         std::cout << "[CB] AddClipboardFormatListener failed\n";
@@ -468,7 +450,6 @@ void monitor_clipboard_thread() {
 
     std::cout << "[CB] Clipboard monitor started (event-driven)\n";
 
-    // Message loop — WM_CLIPBOARDUPDATE fires here on every clipboard change
     MSG msg;
     while (GetMessageW(&msg, NULL, 0, 0))
     {
@@ -770,13 +751,10 @@ VMDetectionResult detect_virtual_machine()
         std::string hvVendor(vendor);
 
         if (hvVendor == "Microsoft Hv") {
-            // Check if we're in the root partition (bare metal with VBS/HVCI)
-            // CPUID leaf 0x40000003 EBX bit 0 = running in root partition
             int partInfo[4] = {};
             __cpuid(partInfo, 0x40000003);
             bool isRootPartition = (partInfo[1] & 1) != 0;
             if (isRootPartition) {
-                // Bare metal with Hyper-V/VBS enabled — not a VM
                 return { false, "" };
             }
             return { true, "cpuid_hypervisor: Microsoft Hv (guest partition)" };
@@ -954,8 +932,6 @@ void download_exam_files(const json& file_urls)
     std::cout << "[FILES] Download complete\n";
 }
 
-// ===================== WORK UPLOAD (ZIP + HTTPS POST) =====================
-
 static bool zip_directory(const std::wstring& dir_path, const std::wstring& zip_path)
 {
     DeleteFileW(zip_path.c_str());
@@ -1110,8 +1086,6 @@ void upload_student_work()
             L"Upload Error", MB_OK | MB_ICONERROR | MB_TOPMOST);
     }
 }
-
-// ===================== END WORK UPLOAD =====================
 
 void on_ws_message(websocketpp::connection_hdl, wss_client::message_ptr msg)
 {
@@ -1281,7 +1255,6 @@ void usb_monitor_thread()
     wc.lpszClassName = L"ExamUSBMonitor";
     RegisterClassW(&wc);
 
-    // WM_DEVICECHANGE requires a top-level window, not HWND_MESSAGE
     g_usbWindow = CreateWindowExW(
         0, L"ExamUSBMonitor", L"",
         WS_OVERLAPPED,
@@ -1401,8 +1374,6 @@ void heartbeat_thread()
         ws_send_event("heartbeat", detail);
     }
 }
-
-// ===================== STUDENT TIMER OVERLAY =====================
 
 #define IDC_FINISH_BTN 5001
 #define WM_TIMER_TICK  (WM_USER + 100)
@@ -1555,8 +1526,6 @@ void timer_overlay_thread()
     }
 }
 
-// ===================== END TIMER OVERLAY =====================
-
 int main()
 {
     FreeConsole();
@@ -1606,14 +1575,3 @@ int main()
 
     return 0;
 }
-
-// Run program: Ctrl + F5 or Debug > Start Without Debugging menu
-// Debug program: F5 or Debug > Start Debugging menu
-
-// Tips for Getting Started: 
-//   1. Use the Solution Explorer window to add/manage files
-//   2. Use the Team Explorer window to connect to source control
-//   3. Use the Output window to see build output and other messages
-//   4. Use the Error List window to view errors
-//   5. Go to Project > Add New Item to create new code files, or Project > Add Existing Item to add existing code files to the project
-//   6. In the future, to open this project again, go to File > Open > Project and select the .sln file
